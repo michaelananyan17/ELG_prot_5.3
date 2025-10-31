@@ -99,18 +99,45 @@
         
         /* Assignment Card in Step 4 */
         .assignment-card {
-            border-left: 4px solid #4f46e5;
+            /* border-left: 4px solid #4f46e5; */
         }
 
-        /* Interactive Element Styling */
+        /* Interactive Element Styling - Reworked for tile look */
         .mc-option {
-            transition: all 0.1s;
+            transition: all 0.2s ease;
             cursor: pointer;
-            border: 1px solid #e5e7eb; /* Light grey */
+            border: 2px solid #e5e7eb; /* Light grey */
+            display: flex; 
+            align-items: center;
         }
         .mc-option:hover {
             background-color: #f3f4f6;
+            border-color: #d1d5db;
         }
+        
+        /* Visual feedback for user selection BEFORE grading */
+        .mc-option.selected-user {
+            background-color: #e0f2fe; /* Light blue/sky-100 for selected state */
+            border-color: #3b82f6; /* Blue-500 */
+        }
+        /* Custom styling for the letter circle */
+        .mc-option .option-letter {
+            width: 24px;
+            height: 24px;
+            min-width: 24px; /* Fix size */
+            min-height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            color: #4f46e5;
+            border: 2px solid #a5b4fc;
+            background-color: #eef2ff;
+            transition: background-color 0.2s;
+        }
+
+        /* Styling for Correct/Incorrect feedback AFTER grading */
         .mc-option.selected-correct {
             background-color: #d1fae5; /* Green 100 */
             border-color: #10b981; /* Green 500 */
@@ -119,7 +146,10 @@
             background-color: #fee2e2; /* Red 100 */
             border-color: #ef4444; /* Red 500 */
         }
-
+        /* Style for the Correct Answer when user was incorrect (Green highlight) */
+        .mc-option.bg-green-200 { 
+            border-color: #059669 !important; /* Deeper Green */
+        }
     </style>
 </head>
 <body class="p-4 sm:p-8">
@@ -291,14 +321,15 @@
             </div>
 
             <!-- Results Display -->
-            <div id="assignment-results" class="space-y-6 hidden">
+            <div id="assignment-results" class="space-y-8 hidden">
                 <!-- Assignments will be dynamically inserted here -->
             </div>
             
             <!-- Grading/Score Display -->
-            <div id="grading-summary" class="hidden mt-6 p-4 bg-gray-100 rounded-lg border border-gray-200">
-                <h3 class="text-lg font-bold text-gray-800">Your Score: <span id="current-score" class="text-indigo-600">0/0</span></h3>
-                <p id="grading-message" class="text-sm text-gray-600"></p>
+            <div id="grading-summary" class="hidden mt-8 p-6 bg-indigo-50 rounded-lg border border-indigo-200 shadow-md">
+                <h3 class="text-xl font-bold text-indigo-800">Review Summary</h3>
+                <p class="text-lg text-indigo-600 mt-1">Score on Graded Questions: <span id="current-score" class="font-extrabold text-2xl">0/0</span></p>
+                <p id="grading-message" class="text-sm text-indigo-700"></p>
             </div>
 
             <div class="flex justify-between mt-8">
@@ -361,7 +392,7 @@
             selectedFormatIds: [],
             cefrLevel: 'B1',
             generatedAssignments: [],
-            userAnswers: [], // NEW: Stores the user's answers for each assignment
+            userAnswers: [], // Stores the user's answers for each assignment
             customTopicText: '',
             uploadedTopic: null, // Stores { id: 'uploaded', name: 'File Name', content: '...' }
         };
@@ -697,6 +728,14 @@
             if (answerType === 'MultipleChoice') {
                 // For MC, the value is the selected option index (0, 1, 2, 3)
                 appState.userAnswers[assignmentIndex].answer = inputElement.value;
+                
+                // NEW: Visual feedback for user selection
+                const card = getElement(`assignment-card-${assignmentIndex}`);
+                // Remove selection highlight from all options in this card
+                card.querySelectorAll('.mc-option').forEach(opt => opt.classList.remove('selected-user'));
+                // Add selection highlight to the clicked option
+                inputElement.closest('label').classList.add('selected-user');
+                
             } else if (answerType === 'GrammarPractice') {
                 // For Grammar, the value is the text input
                 appState.userAnswers[assignmentIndex].answer = inputElement.value.trim();
@@ -717,37 +756,45 @@
             let html = '';
 
             if (type === 'MultipleChoice' && assignment.options && assignment.correctAnswerIndex !== undefined) {
-                html += '<p class="text-sm font-semibold text-gray-700 mb-2">Select the correct answer:</p>';
+                // Reworked MC layout for better tile presentation
+                html += '<div class="grid grid-cols-1 gap-3">';
                 
                 assignment.options.forEach((option, optionIndex) => {
                     const optionId = `${assignmentId}-option-${optionIndex}`;
-                    // The value stored in the radio button will be the option index
+                    // Check if this option was previously selected by the user
+                    const isSelected = appState.userAnswers[index]?.answer === String(optionIndex);
+                    
                     html += `
                         <label for="${optionId}" 
-                               class="mc-option flex items-center p-3 rounded-lg mt-2 transition duration-150">
+                               class="mc-option p-3 rounded-xl border-2 shadow-sm ${isSelected ? 'selected-user' : ''}">
                             <input type="radio" id="${optionId}" name="${assignmentId}-mc-group" 
-                                   value="${optionIndex}" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
-                                   onchange="handleUserAnswer(${index}, this, '${type}')">
-                            <span class="ml-3 text-gray-700">${option}</span>
+                                   value="${optionIndex}" class="hidden"
+                                   onchange="handleUserAnswer(${index}, this, '${type}')"
+                                   ${isSelected ? 'checked' : ''}>
+                            <div class="flex items-start w-full">
+                                <span class="option-letter mr-3">
+                                    ${String.fromCharCode(65 + optionIndex)}
+                                </span>
+                                <span class="text-gray-800 pt-0.5 flex-1">${option}</span>
+                            </div>
                         </label>
                     `;
                 });
+                html += '</div>';
+
             } else if (type === 'GrammarPractice' && originalContent) {
-                // The LLM will provide the sentence with a placeholder/blank. We assume the content is the prompt.
-                html += `<div class="p-3 bg-gray-50 rounded-md border border-gray-200 mb-4 whitespace-pre-wrap">${originalContent}</div>`;
-                html += '<p class="text-sm font-semibold text-gray-700 mb-2 mt-4">Your Answer (one word/phrase):</p>';
+                html += '<p class="text-sm font-semibold text-gray-700 mb-2 mt-2">Your Answer (one word/phrase to complete the sentence):</p>';
                 html += `
                     <input type="text" id="${assignmentId}-input" placeholder="Type your word or phrase here..."
-                           class="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
-                           oninput="handleUserAnswer(${index}, this, '${type}')">
+                           class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
+                           oninput="handleUserAnswer(${index}, this, '${type}')"
+                           value="${appState.userAnswers[index]?.answer || ''}">
                 `;
             } else if (type === 'WritingPrompt' || type === 'VocabularyWords') {
-                // For long-form assignments, use a textarea. We don't grade these in this prototype.
-                html += `<div class="p-3 bg-gray-50 rounded-md border border-gray-200 mb-4 whitespace-pre-wrap">${originalContent}</div>`;
-                html += '<p class="text-sm font-semibold text-gray-700 mb-2 mt-4">Your Response (Ungraded):</p>';
+                html += '<p class="text-sm font-semibold text-gray-700 mb-2 mt-2">Your Response (Ungraded):</p>';
                 html += `
                     <textarea id="${assignmentId}-input" rows="5" placeholder="Write your response here..."
-                              class="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                              class="w-full p-3 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 shadow-sm"
                               oninput="handleUserAnswer(${index}, this, '${type}')">${appState.userAnswers[index]?.answer || ''}</textarea>
                 `;
             } else {
@@ -775,7 +822,8 @@
 
             appState.generatedAssignments.forEach((assignment, index) => {
                 const card = document.createElement('div');
-                card.className = 'assignment-card p-4 sm:p-6 rounded-lg shadow-lg bg-white space-y-3';
+                // Updated styling for a more prominent card
+                card.className = 'assignment-card p-6 sm:p-8 rounded-xl shadow-2xl bg-white space-y-4 border border-gray-100'; 
                 card.id = `assignment-card-${index}`;
 
                 // Determine the visible content (either prompt or question for interactive tasks)
@@ -784,20 +832,27 @@
                     : assignment.content;
 
                 card.innerHTML = `
-                    <h3 class="text-xl font-bold text-indigo-700">${index + 1}. ${assignment.title}</h3>
-                    <p class="text-sm text-gray-500 mb-3">Type: ${assignment.type} | Level: ${appState.cefrLevel}</p>
-                    
-                    <div class="text-gray-700 leading-relaxed">
-                        ${assignmentContent.replace(/\n/g, '<br>')}
+                    <!-- Header -->
+                    <div class="flex justify-between items-center pb-2 border-b border-indigo-100">
+                        <h3 class="text-2xl font-extrabold text-gray-900">Assignment ${index + 1}</h3>
+                        <span class="px-3 py-1 text-xs font-semibold uppercase rounded-full bg-indigo-100 text-indigo-700">${assignment.type} | ${appState.cefrLevel}</span>
+                    </div>
+
+                    <!-- Question/Prompt Area -->
+                    <div class="p-4 rounded-lg bg-gray-50 border border-gray-200">
+                        <p class="font-medium text-gray-800 mb-2">${assignment.title}</p>
+                        <div class="text-gray-700 leading-relaxed whitespace-pre-wrap">
+                            ${assignmentContent.replace(/\n/g, '<br>')}
+                        </div>
                     </div>
 
                     <!-- Interactive Area -->
-                    <div class="interactive-area mt-4 p-4 border border-dashed border-indigo-200 rounded-lg bg-indigo-50">
+                    <div class="interactive-area pt-2">
                         ${renderInteractiveElement(assignment, index)}
                     </div>
                     
                     <!-- Feedback Area (initially hidden) -->
-                    <div id="feedback-${index}" class="text-sm mt-3 p-3 rounded-lg hidden"></div>
+                    <div id="feedback-${index}" class="text-sm mt-4 p-3 rounded-lg hidden border-l-4"></div>
                 `;
                 resultsContainer.appendChild(card);
             });
@@ -819,11 +874,12 @@
 
                 // Reset state
                 feedbackElement.classList.add('hidden');
-                feedbackElement.className = 'text-sm mt-3 p-3 rounded-lg';
+                // Use Tailwind classes for the feedback box
+                feedbackElement.className = 'text-sm mt-4 p-3 rounded-lg border-l-4'; 
                 
                 // Clear all prior MC selection coloring
                 document.querySelectorAll(`#assignment-card-${index} .mc-option`).forEach(opt => {
-                    opt.classList.remove('selected-correct', 'selected-incorrect');
+                    opt.classList.remove('selected-correct', 'selected-incorrect', 'selected-user', 'bg-green-200', 'border-green-600');
                 });
 
 
@@ -840,20 +896,21 @@
                         if (isCorrect) {
                             selectedOptionElement.classList.add('selected-correct');
                             correctCount++;
-                            feedbackElement.textContent = "✅ Correct!";
-                            feedbackElement.classList.add('bg-green-100', 'text-green-700');
+                            feedbackElement.textContent = "✅ Correct! Great job!";
+                            feedbackElement.classList.add('bg-green-100', 'text-green-700', 'border-green-500');
                         } else {
                             selectedOptionElement.classList.add('selected-incorrect');
                             feedbackElement.textContent = `❌ Incorrect. The correct answer was: ${assignment.options[correctIndex]}`;
-                            feedbackElement.classList.add('bg-red-100', 'text-red-700');
+                            feedbackElement.classList.add('bg-red-100', 'text-red-700', 'border-red-500');
                             
-                            // Highlight the correct answer
+                            // Highlight the correct answer with a different, positive style
                             const correctOptionElement = document.querySelector(`#assignment-card-${index} input[value="${correctIndex}"]`).closest('label');
-                            correctOptionElement.classList.add('selected-correct');
+                            correctOptionElement.classList.add('bg-green-200', 'border-green-600'); 
                         }
                     } else {
+                         // User skipped, but keep the neutral styling
                          feedbackElement.textContent = "⚠️ Skipped. No answer provided.";
-                         feedbackElement.classList.add('bg-yellow-100', 'text-yellow-700');
+                         feedbackElement.classList.add('bg-yellow-100', 'text-yellow-700', 'border-yellow-500');
                     }
                     feedbackElement.classList.remove('hidden');
 
@@ -872,15 +929,15 @@
                     if (userAnswer !== '') {
                         if (isCorrect) {
                             correctCount++;
-                            feedbackElement.textContent = "✅ Correct!";
-                            feedbackElement.classList.add('bg-green-100', 'text-green-700');
+                            feedbackElement.textContent = "✅ Correct! Your response matches the expected answer.";
+                            feedbackElement.classList.add('bg-green-100', 'text-green-700', 'border-green-500');
                         } else {
                             feedbackElement.textContent = `❌ Incorrect. The expected answer was: "${assignment.correctAnswer}"`;
-                            feedbackElement.classList.add('bg-red-100', 'text-red-700');
+                            feedbackElement.classList.add('bg-red-100', 'text-red-700', 'border-red-500');
                         }
                     } else {
                          feedbackElement.textContent = "⚠️ Skipped. No answer provided.";
-                         feedbackElement.classList.add('bg-yellow-100', 'text-yellow-700');
+                         feedbackElement.classList.add('bg-yellow-100', 'text-yellow-700', 'border-yellow-500');
                     }
                     feedbackElement.classList.remove('hidden');
 
@@ -890,8 +947,8 @@
                 } else {
                     // WritingPrompt/VocabularyWords (Ungraded)
                     // The LLM does not provide a simple 'correctAnswer' for these, so we just show the user's response.
-                    feedbackElement.textContent = "📝 This is a long-form assignment and is not automatically graded in this prototype.";
-                    feedbackElement.classList.add('bg-gray-100', 'text-gray-600');
+                    feedbackElement.textContent = "📝 This is a long-form assignment and is not automatically graded in this prototype. Review your response below.";
+                    feedbackElement.classList.add('bg-gray-100', 'text-gray-600', 'border-gray-400');
                     feedbackElement.classList.remove('hidden');
                     
                     // Prepare final text: Include Prompt and User Response
@@ -906,9 +963,9 @@
             
             if (totalGradable > 0) {
                  const percentage = Math.round((correctCount / totalGradable) * 100);
-                 getElement('grading-message').textContent = `You scored ${percentage}% on the automatically graded questions. Review the feedback above!`;
+                 getElement('grading-message').textContent = `You scored ${percentage}% on the automatically graded questions. Review the detailed feedback above for each question!`;
             } else {
-                 getElement('grading-message').textContent = `No automatically gradable questions were generated.`;
+                 getElement('grading-message').textContent = `No automatically gradable questions were generated. Your score is based on questions of type Multiple Choice and Grammar Practice.`;
             }
 
             // Update final text for Step 5
