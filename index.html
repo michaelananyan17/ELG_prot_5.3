@@ -102,6 +102,24 @@
             border-left: 4px solid #4f46e5;
         }
 
+        /* Interactive Element Styling */
+        .mc-option {
+            transition: all 0.1s;
+            cursor: pointer;
+            border: 1px solid #e5e7eb; /* Light grey */
+        }
+        .mc-option:hover {
+            background-color: #f3f4f6;
+        }
+        .mc-option.selected-correct {
+            background-color: #d1fae5; /* Green 100 */
+            border-color: #10b981; /* Green 500 */
+        }
+        .mc-option.selected-incorrect {
+            background-color: #fee2e2; /* Red 100 */
+            border-color: #ef4444; /* Red 500 */
+        }
+
     </style>
 </head>
 <body class="p-4 sm:p-8">
@@ -276,13 +294,19 @@
             <div id="assignment-results" class="space-y-6 hidden">
                 <!-- Assignments will be dynamically inserted here -->
             </div>
+            
+            <!-- Grading/Score Display -->
+            <div id="grading-summary" class="hidden mt-6 p-4 bg-gray-100 rounded-lg border border-gray-200">
+                <h3 class="text-lg font-bold text-gray-800">Your Score: <span id="current-score" class="text-indigo-600">0/0</span></h3>
+                <p id="grading-message" class="text-sm text-gray-600"></p>
+            </div>
 
             <div class="flex justify-between mt-8">
                 <button id="step-4-back-to-prev" class="px-6 py-3 text-indigo-600 border border-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 transition duration-150 ease-in-out">
                     Change Criteria
                 </button>
                 <button id="submit-assignments" class="px-6 py-3 bg-indigo-600 text-white font-semibold rounded-lg shadow-md hover:bg-indigo-700 transition duration-150 ease-in-out disabled:opacity-50" disabled>
-                    Finalize & Review (Step 5)
+                    Grade & Review (Step 5)
                 </button>
             </div>
         </div>
@@ -337,6 +361,7 @@
             selectedFormatIds: [],
             cefrLevel: 'B1',
             generatedAssignments: [],
+            userAnswers: [], // NEW: Stores the user's answers for each assignment
             customTopicText: '',
             uploadedTopic: null, // Stores { id: 'uploaded', name: 'File Name', content: '...' }
         };
@@ -363,9 +388,10 @@
         
         // ********** MODIFIED FORMAT POOL **********
         const FORMAT_POOL = [
-            { id: 'ft1', name: 'English Text Topic', type: 'WritingPrompt', icon: '📝', description: 'Generates a full prompt for an essay or a short story' },
+            // Note: WritingPrompt is marked as 'Ungraded' for the prototype, as LLM essay grading is complex
+            { id: 'ft1', name: 'English Text Topic', type: 'WritingPrompt', icon: '📝', description: 'Generates a full prompt for an essay or a short story (Ungraded)' },
             { id: 'ft2', name: 'Grammar Practice', type: 'GrammarPractice', icon: '🧠', description: 'Generates sentences with blanks for conjunction or syntax practice' },
-            { id: 'ft3', name: 'Vocabulary Words', type: 'VocabularyWords', icon: '📚', description: 'Generates new words with context, requiring students to use them in sentences' },
+            { id: 'ft3', name: 'Vocabulary Words', type: 'VocabularyWords', icon: '📚', description: 'Generates new words with context, requiring students to use them in sentences (Ungraded)' },
             { id: 'ft4', name: 'Multiple Choice', type: 'MultipleChoice', icon: '✅', description: 'Generates questions with four potential answers, with only one correct answer' },
         ];
         // *****************************************
@@ -664,6 +690,75 @@
             reader.readAsText(file); // Only reading text for prototype simplicity
         }
 
+        // NEW: Function to handle user input changes and store them in appState.userAnswers
+        function handleUserAnswer(assignmentIndex, inputElement, answerType) {
+            appState.userAnswers[assignmentIndex] = appState.userAnswers[assignmentIndex] || {};
+
+            if (answerType === 'MultipleChoice') {
+                // For MC, the value is the selected option index (0, 1, 2, 3)
+                appState.userAnswers[assignmentIndex].answer = inputElement.value;
+            } else if (answerType === 'GrammarPractice') {
+                // For Grammar, the value is the text input
+                appState.userAnswers[assignmentIndex].answer = inputElement.value.trim();
+            } else if (answerType === 'WritingPrompt' || answerType === 'VocabularyWords') {
+                // For long-form/ungraded answers, we just store the text
+                appState.userAnswers[assignmentIndex].answer = inputElement.value.trim();
+            }
+            
+            // Update the submit button status (optional: if we want to ensure all are answered)
+            // For now, we allow submission even if not all are answered.
+        }
+
+        // NEW: Function to render interactive elements based on assignment type
+        function renderInteractiveElement(assignment, index) {
+            const assignmentId = `assignment-${index}`;
+            const type = assignment.type;
+            const originalContent = assignment.content;
+            let html = '';
+
+            if (type === 'MultipleChoice' && assignment.options && assignment.correctAnswerIndex !== undefined) {
+                html += '<p class="text-sm font-semibold text-gray-700 mb-2">Select the correct answer:</p>';
+                
+                assignment.options.forEach((option, optionIndex) => {
+                    const optionId = `${assignmentId}-option-${optionIndex}`;
+                    // The value stored in the radio button will be the option index
+                    html += `
+                        <label for="${optionId}" 
+                               class="mc-option flex items-center p-3 rounded-lg mt-2 transition duration-150">
+                            <input type="radio" id="${optionId}" name="${assignmentId}-mc-group" 
+                                   value="${optionIndex}" class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300"
+                                   onchange="handleUserAnswer(${index}, this, '${type}')">
+                            <span class="ml-3 text-gray-700">${option}</span>
+                        </label>
+                    `;
+                });
+            } else if (type === 'GrammarPractice' && originalContent) {
+                // The LLM will provide the sentence with a placeholder/blank. We assume the content is the prompt.
+                html += `<div class="p-3 bg-gray-50 rounded-md border border-gray-200 mb-4 whitespace-pre-wrap">${originalContent}</div>`;
+                html += '<p class="text-sm font-semibold text-gray-700 mb-2 mt-4">Your Answer (one word/phrase):</p>';
+                html += `
+                    <input type="text" id="${assignmentId}-input" placeholder="Type your word or phrase here..."
+                           class="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                           oninput="handleUserAnswer(${index}, this, '${type}')">
+                `;
+            } else if (type === 'WritingPrompt' || type === 'VocabularyWords') {
+                // For long-form assignments, use a textarea. We don't grade these in this prototype.
+                html += `<div class="p-3 bg-gray-50 rounded-md border border-gray-200 mb-4 whitespace-pre-wrap">${originalContent}</div>`;
+                html += '<p class="text-sm font-semibold text-gray-700 mb-2 mt-4">Your Response (Ungraded):</p>';
+                html += `
+                    <textarea id="${assignmentId}-input" rows="5" placeholder="Write your response here..."
+                              class="w-full p-2 border border-gray-300 rounded-lg focus:ring-indigo-500 focus:border-indigo-500"
+                              oninput="handleUserAnswer(${index}, this, '${type}')">${appState.userAnswers[index]?.answer || ''}</textarea>
+                `;
+            } else {
+                // Fallback for unexpected format
+                html += `<p class="text-sm text-red-500">Error: Could not render interactive element for this type. Content: ${originalContent}</p>`;
+            }
+
+            return html;
+        }
+
+
         function displayAssignments() {
             const resultsContainer = getElement('assignment-results');
             resultsContainer.innerHTML = '';
@@ -674,31 +769,155 @@
                 return;
             }
 
+            // Initialize userAnswers array to match the number of assignments
+            appState.userAnswers = new Array(appState.generatedAssignments.length).fill(null).map(() => ({ answer: '' }));
+            getElement('grading-summary').classList.add('hidden'); // Hide grading summary on re-generation
+
             appState.generatedAssignments.forEach((assignment, index) => {
                 const card = document.createElement('div');
                 card.className = 'assignment-card p-4 sm:p-6 rounded-lg shadow-lg bg-white space-y-3';
-                // Note: The 'assignment.type' is what the LLM returns, matching the 'type' field in FORMAT_POOL
+                card.id = `assignment-card-${index}`;
+
+                // Determine the visible content (either prompt or question for interactive tasks)
+                const assignmentContent = (assignment.type === 'MultipleChoice' || assignment.type === 'GrammarPractice') 
+                    ? assignment.question || assignment.content 
+                    : assignment.content;
+
                 card.innerHTML = `
                     <h3 class="text-xl font-bold text-indigo-700">${index + 1}. ${assignment.title}</h3>
                     <p class="text-sm text-gray-500 mb-3">Type: ${assignment.type} | Level: ${appState.cefrLevel}</p>
-                    <div class="whitespace-pre-wrap text-gray-700 leading-relaxed" id="assignment-content-${index}">
-                        ${assignment.content}
+                    
+                    <div class="text-gray-700 leading-relaxed">
+                        ${assignmentContent.replace(/\n/g, '<br>')}
                     </div>
+
+                    <!-- Interactive Area -->
+                    <div class="interactive-area mt-4 p-4 border border-dashed border-indigo-200 rounded-lg bg-indigo-50">
+                        ${renderInteractiveElement(assignment, index)}
+                    </div>
+                    
+                    <!-- Feedback Area (initially hidden) -->
+                    <div id="feedback-${index}" class="text-sm mt-3 p-3 rounded-lg hidden"></div>
                 `;
                 resultsContainer.appendChild(card);
             });
             resultsContainer.classList.remove('hidden');
-
-            // Combine text for Step 5
-            const finalAssignmentText = appState.generatedAssignments.map(a => 
-                `--- ${a.title} (${a.type}) ---\n\n${a.content}`
-            ).join('\n\n' + '--------------------------------' + '\n\n');
-            getElement('final-assignment-text').textContent = finalAssignmentText;
         }
         
-        function submitAssignments() {
-            // Placeholder for finalization logic (currently just moves to Step 5)
+        // NEW: Grading Function
+        function gradeAssignments() {
+            let correctCount = 0;
+            let totalGradable = 0;
+            let finalAssignmentText = '';
+
+            appState.generatedAssignments.forEach((assignment, index) => {
+                const userAnswer = appState.userAnswers[index]?.answer || '';
+                const feedbackElement = getElement(`feedback-${index}`);
+                const cardElement = getElement(`assignment-card-${index}`);
+                const type = assignment.type;
+                let isCorrect = false;
+
+                // Reset state
+                feedbackElement.classList.add('hidden');
+                feedbackElement.className = 'text-sm mt-3 p-3 rounded-lg';
+                
+                // Clear all prior MC selection coloring
+                document.querySelectorAll(`#assignment-card-${index} .mc-option`).forEach(opt => {
+                    opt.classList.remove('selected-correct', 'selected-incorrect');
+                });
+
+
+                if (type === 'MultipleChoice') {
+                    totalGradable++;
+                    const correctIndex = assignment.correctAnswerIndex;
+                    
+                    if (userAnswer !== '') {
+                        const selectedOptionElement = document.querySelector(`#assignment-card-${index} input[value="${userAnswer}"]`).closest('label');
+                        
+                        // Check correctness
+                        isCorrect = parseInt(userAnswer) === correctIndex;
+                        
+                        if (isCorrect) {
+                            selectedOptionElement.classList.add('selected-correct');
+                            correctCount++;
+                            feedbackElement.textContent = "✅ Correct!";
+                            feedbackElement.classList.add('bg-green-100', 'text-green-700');
+                        } else {
+                            selectedOptionElement.classList.add('selected-incorrect');
+                            feedbackElement.textContent = `❌ Incorrect. The correct answer was: ${assignment.options[correctIndex]}`;
+                            feedbackElement.classList.add('bg-red-100', 'text-red-700');
+                            
+                            // Highlight the correct answer
+                            const correctOptionElement = document.querySelector(`#assignment-card-${index} input[value="${correctIndex}"]`).closest('label');
+                            correctOptionElement.classList.add('selected-correct');
+                        }
+                    } else {
+                         feedbackElement.textContent = "⚠️ Skipped. No answer provided.";
+                         feedbackElement.classList.add('bg-yellow-100', 'text-yellow-700');
+                    }
+                    feedbackElement.classList.remove('hidden');
+
+                    // Prepare final text: Include Question, User Answer, and Correct Answer
+                    const selectedText = userAnswer !== '' ? assignment.options[parseInt(userAnswer)] : 'N/A';
+                    finalAssignmentText += `--- ${assignment.title} (MC) ---\nQuestion: ${assignment.question}\nYour Answer: ${selectedText}\nCorrect Answer: ${assignment.options[correctIndex]}\nResult: ${isCorrect ? 'Correct' : 'Incorrect'}\n\n`;
+
+                } else if (type === 'GrammarPractice') {
+                    // Simple text comparison for Grammar Practice
+                    totalGradable++;
+                    const expectedAnswer = assignment.correctAnswer.trim().toLowerCase();
+                    const userText = userAnswer.toLowerCase();
+                    
+                    isCorrect = userText === expectedAnswer;
+
+                    if (userAnswer !== '') {
+                        if (isCorrect) {
+                            correctCount++;
+                            feedbackElement.textContent = "✅ Correct!";
+                            feedbackElement.classList.add('bg-green-100', 'text-green-700');
+                        } else {
+                            feedbackElement.textContent = `❌ Incorrect. The expected answer was: "${assignment.correctAnswer}"`;
+                            feedbackElement.classList.add('bg-red-100', 'text-red-700');
+                        }
+                    } else {
+                         feedbackElement.textContent = "⚠️ Skipped. No answer provided.";
+                         feedbackElement.classList.add('bg-yellow-100', 'text-yellow-700');
+                    }
+                    feedbackElement.classList.remove('hidden');
+
+                    // Prepare final text
+                    finalAssignmentText += `--- ${assignment.title} (Grammar) ---\nPrompt: ${assignment.content}\nYour Answer: ${userAnswer}\nCorrect Answer: ${assignment.correctAnswer}\nResult: ${isCorrect ? 'Correct' : 'Incorrect'}\n\n`;
+
+                } else {
+                    // WritingPrompt/VocabularyWords (Ungraded)
+                    // The LLM does not provide a simple 'correctAnswer' for these, so we just show the user's response.
+                    feedbackElement.textContent = "📝 This is a long-form assignment and is not automatically graded in this prototype.";
+                    feedbackElement.classList.add('bg-gray-100', 'text-gray-600');
+                    feedbackElement.classList.remove('hidden');
+                    
+                    // Prepare final text: Include Prompt and User Response
+                    finalAssignmentText += `--- ${assignment.title} (${type}) ---\nPrompt:\n${assignment.content}\n\nUser Response:\n${userAnswer}\n\n(Ungraded)\n\n`;
+                }
+            });
+
+            // Update Grading Summary
+            const scoreDisplay = getElement('current-score');
+            scoreDisplay.textContent = `${correctCount}/${totalGradable}`;
+            getElement('grading-summary').classList.remove('hidden');
+            
+            if (totalGradable > 0) {
+                 const percentage = Math.round((correctCount / totalGradable) * 100);
+                 getElement('grading-message').textContent = `You scored ${percentage}% on the automatically graded questions. Review the feedback above!`;
+            } else {
+                 getElement('grading-message').textContent = `No automatically gradable questions were generated.`;
+            }
+
+            // Update final text for Step 5
+            getElement('final-assignment-text').textContent = finalAssignmentText;
             showStep(5);
+        }
+
+        function submitAssignments() {
+            gradeAssignments();
         }
 
         function copyToClipboard(elementId) {
@@ -724,7 +943,7 @@
         }
 
         // =====================================================================================================
-        // OPENAI API INTEGRATION LOGIC (UPDATED FOR NEW FORMATS)
+        // OPENAI API INTEGRATION LOGIC (UPDATED FOR NEW FORMATS AND ANSWERS)
         // =====================================================================================================
 
         function buildOpenAIPayload(appState) {
@@ -765,13 +984,22 @@
             {
               "assignments": [
                 {
-                  "title": "A concise title for the assignment (e.g., Essay Prompt on Shakespeare)",
+                  "title": "A concise title for the assignment.",
                   "type": "The exact assignment type, MUST be one of: ${formatTypes.join(', ')}",
-                  "content": "The full, complete assignment text. Use \\n for line breaks for proper formatting."
+                  "content": "The full instructions or body text for the student. Use \\n for line breaks.",
+                  "question": "The specific question asked to the student (e.g., 'Fill in the blank: ...'). Same as 'content' if content is simple.",
+                  "correctAnswer": "The single correct answer text (for GrammarPractice). Null otherwise.",
+                  "options": "An array of 4 options (strings) for MultipleChoice. Null otherwise.",
+                  "correctAnswerIndex": "The 0-indexed position of the correct option in the 'options' array (for MultipleChoice). Null otherwise."
                 },
                 ... (one object for each requested assignment format)
               ]
             }
+            
+            Specific content rules:
+            - WritingPrompt/VocabularyWords: Use the 'content' field for the prompt/task. Set correctAnswer/options/correctAnswerIndex to null.
+            - GrammarPractice: Use 'content' for the sentence with a blank/placeholder (e.g., 'She ___ going to the store.') and 'correctAnswer' for the single correct word/phrase (e.g., 'is'). Set options/correctAnswerIndex to null.
+            - MultipleChoice: Use 'question' for the main text, 'options' for the array, and 'correctAnswerIndex' for the 0-indexed position. Set 'content' and 'correctAnswer' to null.
             `;
             
             // User Query: Supplies the specific content criteria
@@ -785,11 +1013,7 @@
                 ${priorityExplanation}
                 ${topicContent}
                 
-                Specific Instructions for TYPES:
-                - WritingPrompt: Must be a full prompt for an essay or short story.
-                - GrammarPractice: Must specify the grammar rule and provide sentences with blanks or syntactical tasks.
-                - VocabularyWords: Must present new words with context and require the student to use them.
-                - MultipleChoice: Must generate questions with four potential answers, clearly indicating which is the single correct answer.
+                Ensure the JSON fields are correctly populated for each TYPE as described in the system instruction.
             `;
             
             return {
@@ -861,7 +1085,7 @@
 
             } catch (e) {
                 console.error("Error parsing LLM output:", e);
-                throw new Error("Could not process the generated assignment text. The LLM might have returned invalid JSON.");
+                throw new Error("Could not process the generated assignment text. The LLM might have returned invalid JSON or a non-compliant structure.");
             }
         }
 
